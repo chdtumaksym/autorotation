@@ -1,15 +1,17 @@
+#define _CRT_SECURE_NO_WARNINGS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <stdio.h>
-#include <stdlib.h> // <-- Обязательно для system()
+#include <stdlib.h> 
 
-typedef BOOL  (__stdcall *FnFindWoW)();
-typedef BOOL  (__stdcall *FnStart)();
-typedef void  (__stdcall *FnStop)();
-typedef BOOL  (__stdcall *FnIsRunning)();
+typedef BOOL (*FnFindWoW)();
+typedef BOOL (*FnStart)();
+typedef void (*FnStop)();
+typedef BOOL (*FnIsRunning)();
 
 int main() {
-    SetConsoleOutputCP(1251);
+    // Включаем UTF-8 для адекватного отображения текста
+    SetConsoleOutputCP(CP_UTF8);
     printf("=== Combat Rogue Pixel Reader (Zero Delay) ===\n");
     printf("F9 - Старт/Стоп\nF10 - Выход\n");
 
@@ -20,13 +22,21 @@ int main() {
         return 1;
     }
 
-    auto FindWoW   = (FnFindWoW)   GetProcAddress(dll, "FindWoW");
-    auto Start     = (FnStart)     GetProcAddress(dll, "StartRotation");
-    auto Stop      = (FnStop)      GetProcAddress(dll, "StopRotation");
-    auto IsRunning = (FnIsRunning) GetProcAddress(dll, "IsRunning");
+    // Защита от MSVC Name Mangling (ищем оба варианта)
+    auto FindWoW   = (FnFindWoW)GetProcAddress(dll, "FindWoW");
+    if (!FindWoW) FindWoW = (FnFindWoW)GetProcAddress(dll, "_FindWoW");
+
+    auto Start     = (FnStart)GetProcAddress(dll, "StartRotation");
+    if (!Start) Start = (FnStart)GetProcAddress(dll, "_StartRotation");
+
+    auto Stop      = (FnStop)GetProcAddress(dll, "StopRotation");
+    if (!Stop) Stop = (FnStop)GetProcAddress(dll, "_StopRotation");
+
+    auto IsRunning = (FnIsRunning)GetProcAddress(dll, "IsRunning");
+    if (!IsRunning) IsRunning = (FnIsRunning)GetProcAddress(dll, "_IsRunning");
 
     if (!FindWoW || !Start || !Stop || !IsRunning) {
-        printf("ОШИБКА: Загружена старая версия roguerot.dll! Обнови файл.\n");
+        printf("ОШИБКА: Экспорты не найдены! Ты точно скомпилировал НОВУЮ roguerot.dll?\n");
         system("pause");
         return 1;
     }
