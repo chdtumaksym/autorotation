@@ -41,9 +41,22 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam) {
 void PressKey(BYTE vk) {
     HWND wow = g_hwnd.load();
     if (!wow || !IsWindow(wow)) return;
-    PostMessage(wow, WM_KEYDOWN, vk, 0);
-    std::this_thread::sleep_for(std::chrono::milliseconds(30));
-    PostMessage(wow, WM_KEYUP, vk, 0);
+
+    // Если это боковые кнопки мыши, используем специфические оконные сообщения
+    if (vk == VK_XBUTTON1 || vk == VK_XBUTTON2) {
+        WORD btn = (vk == VK_XBUTTON1) ? XBUTTON1 : XBUTTON2;
+        WPARAM wParam = MAKEWPARAM(0, btn);
+        // Отправляем сигнал о нажатии и отпускании доп. кнопки мыши
+        PostMessage(wow, WM_XBUTTONDOWN, wParam, 0);
+        std::this_thread::sleep_for(std::chrono::milliseconds(30));
+        PostMessage(wow, WM_XBUTTONUP, wParam, 0);
+    } 
+    // Для всех остальных кнопок используем стандартное нажатие клавиши
+    else {
+        PostMessage(wow, WM_KEYDOWN, vk, 0);
+        std::this_thread::sleep_for(std::chrono::milliseconds(30));
+        PostMessage(wow, WM_KEYUP, vk, 0);
+    }
 }
 
 // Функция для проверки цвета с учетом искажений рендера WoW
