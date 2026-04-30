@@ -1,112 +1,64 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <thread>
-#include <atomic>
-#include <map>
-#include <string>
-#include <algorithm>
+#include <stdio.h>
+#include <stdlib.h>
 
-static std::atomic<bool> g_running(false);
-static std::atomic<HWND> g_hwnd(nullptr);
-static std::thread       g_thread;
-static std::map<COLORREF, BYTE> g_binds;
+// Вырезали __stdcall из сигнатур
+typedef BOOL (*FnFind)();
+typedef void (*FnBind)(int, int, int, BYTE);
+typedef BOOL (*FnStart)();
+typedef void (*FnStop)();
 
-std::string toLower(std::string s) {
-    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c){ return std::tolower(c); });
-    return s;
-}
+int main() {
+    SetConsoleOutputCP(1251);
+    printf("--- Combat Rogue Loader v5.6 (Fixed Exports) ---\n");
 
-BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam) {
-    char title[256];
-    if (GetWindowTextA(hwnd, title, sizeof(title)) > 0) {
-        std::string t = toLower(title);
-        if (t.find("sirus") != std::string::npos || 
-            t.find("warcraft") != std::string::npos || 
-            t.find("warmane") != std::string::npos || 
-            t.find("wow") != std::string::npos || 
-            t.find("lich king") != std::string::npos) {
-            
-            if (IsWindowVisible(hwnd)) {
-                HWND* target = (HWND*)lParam;
-                *target = hwnd;
-                return FALSE; 
+    HINSTANCE hDll = LoadLibraryA("roguerot.dll");
+    if (!hDll) { printf("Ошибка: Файл roguerot.dll не найден рядом с лоадером!\n"); system("pause"); return 1; }
+
+    auto FindWoW = (FnFind)GetProcAddress(hDll, "FindWoWWindow");
+    auto Bind    = (FnBind)GetProcAddress(hDll, "BindColor");
+    auto Start   = (FnStart)GetProcAddress(hDll, "StartRotation");
+    auto Stop    = (FnStop)GetProcAddress(hDll, "StopRotation");
+
+    if (!FindWoW || !Bind || !Start || !Stop) {
+        printf("Ошибка: Не удалось загрузить функции из DLL! (Name Mangling issue)\n");
+        system("pause"); return 1;
+    }
+
+    Bind(255, 0, 0,   '1');             // Sinister Strike
+    Bind(0, 255, 0,   '2');             // Slice and Dice
+    Bind(0, 0, 255,   'Q');             // Eviscerate
+    Bind(255, 255, 0, '4');             // Killing Spree
+    Bind(0, 255, 255, VK_XBUTTON1);     // Adrenaline Rush
+    Bind(255, 0, 255, '3');             // Blade Flurry
+
+    printf("\nИНСТРУКЦИЯ:\n");
+    printf("1. Зайди в игру WoW.\n");
+    printf("2. Кликни мышкой по игре, чтобы она была активна.\n");
+    printf("3. Прямо в игре нажми F9. Бот прицепится к активному окну.\n\n");
+    printf("F9 - Старт/Стоп, F10 - Выход\n");
+
+    bool run = false;
+    while (!(GetAsyncKeyState(VK_F10) & 1)) {
+        if (GetAsyncKeyState(VK_F9) & 1) {
+            run = !run;
+            if (run) {
+                if (FindWoW()) { 
+                    Start(); 
+                    printf("[УСПЕХ] Бот прицепился к окну! Работаем...\n"); 
+                }
+                else { 
+                    printf("[ОШИБКА] Кликни по окну ИГРЫ перед тем как жать F9!\n"); 
+                    run = false; 
+                }
+            } else { 
+                Stop(); 
+                printf("[ПАУЗА] Остановлено.\n"); 
             }
         }
+        Sleep(100);
     }
-    return TRUE;
+    Stop();
+    return 0;
 }
-
-void PressKey(BYTE vk) {
-    HWND wow = g_hwnd.load();
-    if (!wow || !IsWindow(wow)) return;
-    PostMessage(wow, WM_KEYDOWN, vk, 0);
-    std::this_thread::sleep_for(std::chrono::milliseconds(30));
-    PostMessage(wow, WM_KEYUP, vk, 0);
-}
-
-void RotationLoop() {
-    while (g_running.load()) {
-        HWND wow = g_hwnd.load();
-        if (!wow || !IsWindow(wow) || GetForegroundWindow() != wow) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
-            continue;
-        }
-
-        HDC hdc = GetDC(NULL); 
-        if (hdc) {
-            COLORREF color = GetPixel(hdc, 1, 1);
-            ReleaseDC(NULL, hdc);
-
-            if (g_binds.count(color)) {
-                PressKey(g_binds[color]);
-                std::this_thread::sleep_for(std::chrono::milliseconds(200));
-            }
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(25));
-    }
-}
-
-extern "C" {
-    // Вырезали __stdcall, чтобы имена не ломались
-    __declspec(dllexport) BOOL FindWoWWindow() {
-        HWND foundHwnd = nullptr;
-        foundHwnd = FindWindowA("GxWindowClass", nullptr);
-        
-        if (!foundHwnd) {
-            EnumWindows(EnumWindowsProc, (LPARAM)&foundHwnd);
-        }
-        
-        if (!foundHwnd) {
-            HWND active = GetForegroundWindow();
-            char title[256] = {0};
-            GetWindowTextA(active, title, sizeof(title));
-            std::string t = toLower(title);
-            if (t.find("loader") == std::string::npos && t.find("cmd") == std::string::npos) {
-                foundHwnd = active;
-            }
-        }
-        
-        g_hwnd.store(foundHwnd);
-        return (foundHwnd != nullptr);
-    }
-
-    __declspec(dllexport) void BindColor(int r, int g, int b, BYTE vk) {
-        g_binds[RGB(r, g, b)] = vk;
-    }
-
-    __declspec(dllexport) BOOL StartRotation() {
-        if (g_running.load()) return FALSE;
-        g_running.store(true);
-        g_thread = std::thread(RotationLoop);
-        return TRUE;
-    }
-
-    __declspec(dllexport) void StopRotation() {
-        g_running.store(false);
-        if (g_thread.joinable()) g_thread.join();
-    }
-
-    __declspec(dllexport) BOOL IsRunning() { return g_running.load(); }
-}
-
-BOOL WINAPI DllMain(HMODULE h, DWORD r, LPVOID l) { return TRUE; }
