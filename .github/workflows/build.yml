@@ -1,22 +1,31 @@
-name: Build Rogue Bot v5on: [push]jobs:build:runs-on: windows-lateststeps:
-  - name: Checkout code
-    uses: actions/checkout@v4
+name: Build Rogue Bot v5
 
-  - name: Setup MSVC
-    uses: ilammy/msvc-dev-cmd@v1
-    with:
-      arch: x86
+on: [push]
 
-  - name: Compile DLL
-    run: cl.exe /LD /EHsc /O2 roguerot.cpp /link /OUT:roguerot.dll gdi32.lib user32.lib /MACHINE:X86
+jobs:
+  build:
+    runs-on: windows-latest
 
-  - name: Compile Loader
-    run: cl.exe /EHsc /O2 loader.cpp /link /OUT:loader.exe user32.lib /MACHINE:X86
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-  - name: Upload Result
-    uses: actions/upload-artifact@v4
-    with:
-      name: rogue-bot-v5
-      path: |
-        roguerot.dll
-        loader.exe
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+
+      - name: Compile DLL
+        run: cl.exe /LD /EHsc /O2 roguerot.cpp /link /OUT:roguerot.dll gdi32.lib user32.lib /MACHINE:X86
+
+      - name: Compile Loader
+        run: cl.exe /EHsc /O2 loader.cpp /link /OUT:loader.exe user32.lib /MACHINE:X86
+
+      - name: Upload Result
+        uses: actions/upload-artifact@v4
+        with:
+          name: rogue-bot-v5
+          path: |
+            roguerot.dll
+            loader.exe
+```
