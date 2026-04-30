@@ -7,26 +7,26 @@ build:
 runs-on: windows-latest
 
 steps:
-- name: Checkout code
-  uses: actions/checkout@v4
+  - name: Checkout code
+    uses: actions/checkout@v4
 
-- name: Setup MSVC (Visual Studio Compiler)
-  uses: ilammy/msvc-dev-cmd@v1
-  with:
-    arch: x86
+  - name: Setup MSVC (Visual Studio Compiler)
+    uses: ilammy/msvc-dev-cmd@v1
+    with:
+      arch: x86
 
-- name: Compile DLL (roguerot.dll)
-  run: |
-    cl.exe /LD /EHsc /O2 roguerot.cpp /link /OUT:roguerot.dll gdi32.lib user32.lib /MACHINE:X86
+  - name: Compile DLL (roguerot.dll)
+    run: |
+      cl.exe /LD /EHsc /O2 roguerot.cpp /link /OUT:roguerot.dll gdi32.lib user32.lib /MACHINE:X86
 
-- name: Compile Loader (loader.exe)
-  run: |
-    cl.exe /EHsc /O2 loader.cpp /link /OUT:loader.exe user32.lib /MACHINE:X86
+  - name: Compile Loader (loader.exe)
+    run: |
+      cl.exe /EHsc /O2 loader.cpp /link /OUT:loader.exe user32.lib /MACHINE:X86
 
-- name: Upload Finished Files
-  uses: actions/upload-artifact@v4
-  with:
-    name: rogue-bot-v5
-    path: |
-      roguerot.dll
-      loader.exe
+  - name: Upload Finished Files
+    uses: actions/upload-artifact@v4
+    with:
+      name: rogue-bot-v5
+      path: |
+        roguerot.dll
+        loader.exe
