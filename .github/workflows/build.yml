@@ -1,24 +1,39 @@
-name: Build Rogue Bot v5on: [push]jobs:build:runs-on: windows-lateststeps:
-  - name: Checkout code
-    uses: actions/checkout@v4
+name: C++ Build and Compile
 
-  - name: Setup MSVC (Visual Studio Compiler)
-    uses: ilammy/msvc-dev-cmd@v1
-    with:
-      arch: x86
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
-  - name: Compile DLL (roguerot.dll)
-    run: |
-      cl.exe /LD /EHsc /O2 roguerot.cpp /link /OUT:roguerot.dll gdi32.lib user32.lib /MACHINE:X86
+jobs:
+  build:
+    runs-on: windows-latest
 
-  - name: Compile Loader (loader.exe)
-    run: |
-      cl.exe /EHsc /O2 loader.cpp /link /OUT:loader.exe user32.lib /MACHINE:X86
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
 
-  - name: Upload Finished Files
-    uses: actions/upload-artifact@v4
-    with:
-      name: rogue-bot-v5
-      path: |
-        roguerot.dll
-        loader.exe
+      - name: Set up MinGW
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          install-packages: mingw-w64-x86_64-gcc
+
+      - name: Compile loader.cpp to exe
+        run: |
+          gcc -o loader.exe loader.cpp
+
+      - name: Compile roguerot.cpp to dll
+        run: |
+          gcc -shared -o roguerot.dll roguerot.cpp
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: build-artifacts
+          path: |
+            loader.exe
+            roguerot.dll
