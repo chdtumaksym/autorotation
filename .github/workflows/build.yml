@@ -28,4 +28,3 @@ jobs:
           path: |
             roguerot.dll
             loader.exe
-```
