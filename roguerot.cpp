@@ -67,7 +67,8 @@ void RotationLoop() {
 }
 
 extern "C" {
-    __declspec(dllexport) BOOL __stdcall FindWoWWindow() {
+    // Вырезали __stdcall, чтобы имена не ломались
+    __declspec(dllexport) BOOL FindWoWWindow() {
         HWND foundHwnd = nullptr;
         foundHwnd = FindWindowA("GxWindowClass", nullptr);
         
@@ -75,13 +76,11 @@ extern "C" {
             EnumWindows(EnumWindowsProc, (LPARAM)&foundHwnd);
         }
         
-        // ЭКСТРЕМАЛЬНЫЙ МЕТОД: Если не нашли по имени, берем то окно, которое сейчас активно
         if (!foundHwnd) {
             HWND active = GetForegroundWindow();
             char title[256] = {0};
             GetWindowTextA(active, title, sizeof(title));
             std::string t = toLower(title);
-            // Защита: чтобы бот не прицепился к самой черной консоли лоадера
             if (t.find("loader") == std::string::npos && t.find("cmd") == std::string::npos) {
                 foundHwnd = active;
             }
@@ -91,23 +90,23 @@ extern "C" {
         return (foundHwnd != nullptr);
     }
 
-    __declspec(dllexport) void __stdcall BindColor(int r, int g, int b, BYTE vk) {
+    __declspec(dllexport) void BindColor(int r, int g, int b, BYTE vk) {
         g_binds[RGB(r, g, b)] = vk;
     }
 
-    __declspec(dllexport) BOOL __stdcall StartRotation() {
+    __declspec(dllexport) BOOL StartRotation() {
         if (g_running.load()) return FALSE;
         g_running.store(true);
         g_thread = std::thread(RotationLoop);
         return TRUE;
     }
 
-    __declspec(dllexport) void __stdcall StopRotation() {
+    __declspec(dllexport) void StopRotation() {
         g_running.store(false);
         if (g_thread.joinable()) g_thread.join();
     }
 
-    __declspec(dllexport) BOOL __stdcall IsRunning() { return g_running.load(); }
+    __declspec(dllexport) BOOL IsRunning() { return g_running.load(); }
 }
 
 BOOL WINAPI DllMain(HMODULE h, DWORD r, LPVOID l) { return TRUE; }
