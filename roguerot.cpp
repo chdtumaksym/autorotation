@@ -61,10 +61,12 @@ void RotationLoop() {
             continue;
         }
 
-        HDC hdc = GetDC(NULL); 
+        // БЕРЕМ КОНТЕКСТ ИМЕННО ОКНА WOW, А НЕ ВСЕГО ЭКРАНА
+        HDC hdc = GetDC(wow); 
         if (hdc) {
-            COLORREF color = GetPixel(hdc, 1, 1);
-            ReleaseDC(NULL, hdc);
+            // Читаем самый крайний пиксель клиентской части окна (0,0)
+            COLORREF color = GetPixel(hdc, 0, 0);
+            ReleaseDC(wow, hdc);
 
             // Если пиксель практически черный (ничего не нужно жать), пропускаем
             if (GetRValue(color) < 20 && GetGValue(color) < 20 && GetBValue(color) < 20) {
