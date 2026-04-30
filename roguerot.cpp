@@ -3,31 +3,42 @@
 // Читает цвета от ComRogue.lua и мгновенно жмет кнопки
 // ============================================================
 
+#define _CRT_SECURE_NO_WARNINGS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <stdio.h>
 #include <fstream>
 #include <chrono>
 #include <thread>
 #include <atomic>
 #include <string>
 
+// Железобетонные предохранители для компилятора
+#ifndef XBUTTON1
+#define XBUTTON1 0x0001
+#endif
+#ifndef MOUSEEVENTF_XDOWN
+#define MOUSEEVENTF_XDOWN 0x0080
+#define MOUSEEVENTF_XUP   0x0100
+#endif
+
 std::atomic<bool> g_running(false);
 HWND g_wowHwnd = NULL;
 std::thread g_thread;
 std::ofstream g_log;
-int g_press_delay = 10; // 10 мс удержание кнопки (чтобы игра успела зарегать)
+int g_press_delay = 10; // 10 мс удержание кнопки
 
 // Функция для высокоточной записи в лог
 void LogAction(const std::string& action) {
     if (!g_log.is_open()) return;
     auto now = std::chrono::system_clock::now();
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+    auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000;
     
     SYSTEMTIME st;
     GetLocalTime(&st);
     
     char buffer[256];
-    sprintf(buffer, "[%02d:%02d:%02d.%03d] %s\n", st.wHour, st.wMinute, st.wSecond, (int)ms.count(), action.c_str());
+    sprintf(buffer, "[%02d:%02d:%02d.%03d] %s\n", st.wHour, st.wMinute, st.wSecond, (int)millis, action.c_str());
     g_log << buffer;
     g_log.flush();
 }
@@ -65,11 +76,11 @@ void SendMouse4() {
 
 // Основной цикл сканирования
 void RotationThread() {
-    LogAction("ПОТОК РОТАЦИИ ЗАПУЩЕН. Подключение к окну...");
+    LogAction("ПОТОК РОТАЦИИ ЗАПУЩЕН.");
     
     HDC hdc = GetDC(g_wowHwnd);
     if (!hdc) {
-        LogAction("ОШИБКА: Не удалось получить контекст окна (HDC)!");
+        LogAction("ОШИБКА: Не удалось получить HDC!");
         g_running.store(false);
         return;
     }
@@ -77,14 +88,12 @@ void RotationThread() {
     int last_action = 0;
 
     while (g_running.load()) {
-        // Читаем пиксель 0,0
         COLORREF color = GetPixel(hdc, 0, 0);
         int r = GetRValue(color);
         int g = GetGValue(color);
         int b = GetBValue(color);
 
-        // Расшифровка цвета в кнопку (пороги > 200 защищают от искажений гаммы)
-        int current_action = 0; // 0 = NONE
+        int current_action = 0; 
         
         if (r > 200 && g < 50 && b < 50) current_action = 1;         // SS (1)
         else if (r < 50 && g > 200 && b < 50) current_action = 2;    // SND (2)
@@ -93,10 +102,9 @@ void RotationThread() {
         else if (r < 50 && g > 200 && b > 200) current_action = 5;   // AR (Mouse4)
         else if (r > 200 && g < 50 && b > 200) current_action = 6;   // BF (3)
 
-        // Если бот просит нажать что-то новое, жмем
         if (current_action != 0 && current_action != last_action) {
             char logMsg[128];
-            sprintf(logMsg, "Детект RGB(%d,%d,%d) -> Действие ID: %d", r, g, b, current_action);
+            sprintf(logMsg, "Детект RGB(%d,%d,%d) -> ID: %d", r, g, b, current_action);
             LogAction(logMsg);
 
             switch (current_action) {
@@ -110,16 +118,16 @@ void RotationThread() {
         }
         
         last_action = current_action;
-        Sleep(2); // Квантовая пауза в 2мс чтобы не сжечь процессор
+        Sleep(2); 
     }
 
     ReleaseDC(g_wowHwnd, hdc);
     LogAction("ПОТОК РОТАЦИИ ОСТАНОВЛЕН.");
 }
 
-// Экспорты для loader.cpp
+// Экспорты
 extern "C" {
-    __declspec(dllexport) BOOL __stdcall FindWoW() {
+    __declspec(dllexport) BOOL FindWoW() {
         g_wowHwnd = FindWindowA(NULL, "World of Warcraft");
         if (g_wowHwnd) {
             g_log.open("RogueBot_Log.txt", std::ios::app);
@@ -129,20 +137,25 @@ extern "C" {
         return FALSE;
     }
 
-    __declspec(dllexport) BOOL __stdcall StartRotation() {
+    __declspec(dllexport) BOOL StartRotation() {
         if (g_running.load()) return FALSE;
         g_running.store(true);
         g_thread = std::thread(RotationThread);
         return TRUE;
     }
 
-    __declspec(dllexport) void __stdcall StopRotation() {
+    __declspec(dllexport) void StopRotation() {
         g_running.store(false);
         if (g_thread.joinable()) g_thread.join();
         if (g_log.is_open()) g_log.close();
     }
 
-    __declspec(dllexport) BOOL __stdcall IsRunning() {
+    __declspec(dllexport) BOOL IsRunning() {
         return g_running.load() ? TRUE : FALSE;
     }
+}
+
+// Заглушка для линковщика
+BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
+    return TRUE;
 }
