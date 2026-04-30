@@ -1,7 +1,7 @@
-// loader.cpp
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 typedef BOOL (__stdcall *FnFind)();
 typedef void (__stdcall *FnBind)(int, int, int, BYTE);
@@ -10,7 +10,7 @@ typedef void (__stdcall *FnStop)();
 
 int main() {
     SetConsoleOutputCP(1251);
-    printf("--- Combat Rogue Loader v5 (Pixel) ---\n");
+    printf("--- Combat Rogue Loader v5 (Sirus/Warmane Pixel) ---\n");
 
     HINSTANCE hDll = LoadLibraryA("roguerot.dll");
     if (!hDll) { printf("Ошибка: DLL не найдена!\n"); system("pause"); return 1; }
