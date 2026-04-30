@@ -6,6 +6,7 @@
 #include <string>
 #include <algorithm>
 #include <cmath>
+#include <stdio.h>
 
 static std::atomic<bool> g_running(false);
 static std::atomic<HWND> g_hwnd(nullptr);
@@ -77,6 +78,17 @@ void RotationLoop() {
             // Перебираем все наши бинды и ищем похожий цвет
             for (const auto& bind : g_binds) {
                 if (IsColorMatch(color, bind.first)) {
+                    
+                    // --- ЛОГИРОВАНИЕ В КОНСОЛЬ ---
+                    printf("[LOG] Цвет экрана: R:%3d G:%3d B:%3d | Жму кнопку: ", 
+                           GetRValue(color), GetGValue(color), GetBValue(color));
+                    
+                    if (bind.second == VK_XBUTTON1) printf("Mouse4\n");
+                    else printf("%c\n", bind.second);
+                    
+                    fflush(stdout); // Принудительно выводим текст
+                    // -----------------------------
+
                     PressKey(bind.second);
                     std::this_thread::sleep_for(std::chrono::milliseconds(200));
                     break; // Нажали кнопку, ждем следующий тик
