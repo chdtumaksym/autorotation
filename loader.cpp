@@ -1,6 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <stdio.h>
+#include <stdlib.h> // <-- Обязательно для system()
 
 typedef BOOL  (__stdcall *FnFindWoW)();
 typedef BOOL  (__stdcall *FnStart)();
@@ -25,7 +26,7 @@ int main() {
     auto IsRunning = (FnIsRunning) GetProcAddress(dll, "IsRunning");
 
     if (!FindWoW || !Start || !Stop || !IsRunning) {
-        printf("ОШИБКА: Загружена старая версия roguerot.dll!\n");
+        printf("ОШИБКА: Загружена старая версия roguerot.dll! Обнови файл.\n");
         system("pause");
         return 1;
     }
