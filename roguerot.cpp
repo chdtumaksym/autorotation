@@ -11,7 +11,6 @@ static std::atomic<HWND> g_hwnd(nullptr);
 static std::thread       g_thread;
 static std::map<COLORREF, BYTE> g_binds;
 
-// Функция для перевода строки в нижний регистр для поиска без учета регистра
 std::string toLower(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c){ return std::tolower(c); });
     return s;
@@ -21,10 +20,10 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam) {
     char title[256];
     if (GetWindowTextA(hwnd, title, sizeof(title)) > 0) {
         std::string t = toLower(title);
-        // Ищем ключевые слова: warmane, sirus, warcraft или lich king
         if (t.find("sirus") != std::string::npos || 
             t.find("warcraft") != std::string::npos || 
             t.find("warmane") != std::string::npos || 
+            t.find("wow") != std::string::npos || 
             t.find("lich king") != std::string::npos) {
             
             if (IsWindowVisible(hwnd)) {
@@ -55,7 +54,6 @@ void RotationLoop() {
 
         HDC hdc = GetDC(NULL); 
         if (hdc) {
-            // Пиксель (1,1)
             COLORREF color = GetPixel(hdc, 1, 1);
             ReleaseDC(NULL, hdc);
 
@@ -71,12 +69,22 @@ void RotationLoop() {
 extern "C" {
     __declspec(dllexport) BOOL __stdcall FindWoWWindow() {
         HWND foundHwnd = nullptr;
-        // Сначала пробуем стандартный класс
         foundHwnd = FindWindowA("GxWindowClass", nullptr);
         
-        // Если не вышло (как в случае с Сирусом) - ищем по списку слов
         if (!foundHwnd) {
             EnumWindows(EnumWindowsProc, (LPARAM)&foundHwnd);
+        }
+        
+        // ЭКСТРЕМАЛЬНЫЙ МЕТОД: Если не нашли по имени, берем то окно, которое сейчас активно
+        if (!foundHwnd) {
+            HWND active = GetForegroundWindow();
+            char title[256] = {0};
+            GetWindowTextA(active, title, sizeof(title));
+            std::string t = toLower(title);
+            // Защита: чтобы бот не прицепился к самой черной консоли лоадера
+            if (t.find("loader") == std::string::npos && t.find("cmd") == std::string::npos) {
+                foundHwnd = active;
+            }
         }
         
         g_hwnd.store(foundHwnd);
