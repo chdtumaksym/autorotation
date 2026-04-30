@@ -21,9 +21,10 @@ BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam) {
     char title[256];
     if (GetWindowTextA(hwnd, title, sizeof(title)) > 0) {
         std::string t = toLower(title);
-        // Ищем ключевые слова: sirus, warcraft или lich king
+        // Ищем ключевые слова: warmane, sirus, warcraft или lich king
         if (t.find("sirus") != std::string::npos || 
             t.find("warcraft") != std::string::npos || 
+            t.find("warmane") != std::string::npos || 
             t.find("lich king") != std::string::npos) {
             
             if (IsWindowVisible(hwnd)) {
