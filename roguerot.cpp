@@ -5,6 +5,7 @@
 #include <map>
 #include <string>
 #include <algorithm>
+#include <cmath>
 
 static std::atomic<bool> g_running(false);
 static std::atomic<HWND> g_hwnd(nullptr);
@@ -44,6 +45,14 @@ void PressKey(BYTE vk) {
     PostMessage(wow, WM_KEYUP, vk, 0);
 }
 
+// Функция для проверки цвета с учетом искажений рендера WoW
+bool IsColorMatch(COLORREF c1, COLORREF c2, int tolerance = 45) {
+    int r = std::abs((int)GetRValue(c1) - (int)GetRValue(c2));
+    int g = std::abs((int)GetGValue(c1) - (int)GetGValue(c2));
+    int b = std::abs((int)GetBValue(c1) - (int)GetBValue(c2));
+    return (r <= tolerance && g <= tolerance && b <= tolerance);
+}
+
 void RotationLoop() {
     while (g_running.load()) {
         HWND wow = g_hwnd.load();
@@ -57,9 +66,19 @@ void RotationLoop() {
             COLORREF color = GetPixel(hdc, 1, 1);
             ReleaseDC(NULL, hdc);
 
-            if (g_binds.count(color)) {
-                PressKey(g_binds[color]);
-                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            // Если пиксель практически черный (ничего не нужно жать), пропускаем
+            if (GetRValue(color) < 20 && GetGValue(color) < 20 && GetBValue(color) < 20) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(25));
+                continue;
+            }
+
+            // Перебираем все наши бинды и ищем похожий цвет
+            for (const auto& bind : g_binds) {
+                if (IsColorMatch(color, bind.first)) {
+                    PressKey(bind.second);
+                    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                    break; // Нажали кнопку, ждем следующий тик
+                }
             }
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(25));
@@ -67,7 +86,6 @@ void RotationLoop() {
 }
 
 extern "C" {
-    // Вырезали __stdcall, чтобы имена не ломались
     __declspec(dllexport) BOOL FindWoWWindow() {
         HWND foundHwnd = nullptr;
         foundHwnd = FindWindowA("GxWindowClass", nullptr);
