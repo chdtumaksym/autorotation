@@ -1,12 +1,4 @@
-name: Build Rogue Bot v5
-
-on: [push]
-
-jobs:
-build:
-runs-on: windows-latest
-
-steps:
+name: Build Rogue Bot v5on: [push]jobs:build:runs-on: windows-lateststeps:
   - name: Checkout code
     uses: actions/checkout@v4
 
