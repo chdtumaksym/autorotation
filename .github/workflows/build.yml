@@ -1,33 +1,32 @@
-name: Build Bot
+name: Build Rogue Bot v5
 
 on: [push]
 
 jobs:
-  build:
-    runs-on: windows-latest
+build:
+runs-on: windows-latest
 
-    steps:
-    - uses: actions/checkout@v4
+steps:
+- name: Checkout code
+  uses: actions/checkout@v4
 
-    - name: Setup MSVC
-      uses: ilammy/msvc-dev-cmd@v1
-      with:
-        arch: x86
+- name: Setup MSVC (Visual Studio Compiler)
+  uses: ilammy/msvc-dev-cmd@v1
+  with:
+    arch: x86
 
-    - name: Compile DLL
-      run: cl.exe /LD /EHsc /O2 roguerot.cpp /link /OUT:roguerot.dll gdi32.lib user32.lib /MACHINE:X86
+- name: Compile DLL (roguerot.dll)
+  run: |
+    cl.exe /LD /EHsc /O2 roguerot.cpp /link /OUT:roguerot.dll gdi32.lib user32.lib /MACHINE:X86
 
-    - name: Compile Loader
-      run: cl.exe /EHsc /O2 loader.cpp /link /OUT:loader.exe user32.lib /MACHINE:X86
+- name: Compile Loader (loader.exe)
+  run: |
+    cl.exe /EHsc /O2 loader.cpp /link /OUT:loader.exe user32.lib /MACHINE:X86
 
-    - name: Upload Result
-      uses: actions/upload-artifact@v4
-      with:
-        name: rogue-bot-files
-        path: |
-          roguerot.dll
-          loader.exe
-
-После того как нажмешь **Commit changes**, подожди 2 минуты во вкладке **Actions**. В артефактах появится архив `rogue-bot-files`, в котором будут лежать уже оба готовых файла: и либа, и экзешник.
-
-Забирай их, клади в одну папку и запускай. Не забудь про **оконный режим** игры!
+- name: Upload Finished Files
+  uses: actions/upload-artifact@v4
+  with:
+    name: rogue-bot-v5
+    path: |
+      roguerot.dll
+      loader.exe
