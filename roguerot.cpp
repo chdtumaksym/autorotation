@@ -1,157 +1,148 @@
+// ============================================================
+// roguerot.cpp — Настоящий пиксель-ридер (Zero Delay Edition)
+// Читает цвета от ComRogue.lua и мгновенно жмет кнопки
+// ============================================================
+
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <fstream>
+#include <chrono>
 #include <thread>
 #include <atomic>
-#include <map>
 #include <string>
-#include <algorithm>
-#include <cmath>
-#include <stdio.h>
 
-static std::atomic<bool> g_running(false);
-static std::atomic<HWND> g_hwnd(nullptr);
-static std::thread       g_thread;
-static std::map<COLORREF, BYTE> g_binds;
+std::atomic<bool> g_running(false);
+HWND g_wowHwnd = NULL;
+std::thread g_thread;
+std::ofstream g_log;
+int g_press_delay = 10; // 10 мс удержание кнопки (чтобы игра успела зарегать)
 
-std::string toLower(std::string s) {
-    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c){ return std::tolower(c); });
-    return s;
+// Функция для высокоточной записи в лог
+void LogAction(const std::string& action) {
+    if (!g_log.is_open()) return;
+    auto now = std::chrono::system_clock::now();
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+    
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    
+    char buffer[256];
+    sprintf(buffer, "[%02d:%02d:%02d.%03d] %s\n", st.wHour, st.wMinute, st.wSecond, (int)ms.count(), action.c_str());
+    g_log << buffer;
+    g_log.flush();
 }
 
-BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lParam) {
-    char title[256];
-    if (GetWindowTextA(hwnd, title, sizeof(title)) > 0) {
-        std::string t = toLower(title);
-        if (t.find("sirus") != std::string::npos || 
-            t.find("warcraft") != std::string::npos || 
-            t.find("warmane") != std::string::npos || 
-            t.find("wow") != std::string::npos || 
-            t.find("lich king") != std::string::npos) {
-            
-            if (IsWindowVisible(hwnd)) {
-                HWND* target = (HWND*)lParam;
-                *target = hwnd;
-                return FALSE; 
-            }
-        }
+// Эмуляция нажатия клавиатуры
+void SendKey(WORD vk) {
+    INPUT inp[2] = {0};
+    inp[0].type = INPUT_KEYBOARD;
+    inp[0].ki.wVk = vk;
+    
+    inp[1].type = INPUT_KEYBOARD;
+    inp[1].ki.wVk = vk;
+    inp[1].ki.dwFlags = KEYEVENTF_KEYUP;
+
+    SendInput(1, &inp[0], sizeof(INPUT));
+    Sleep(g_press_delay); 
+    SendInput(1, &inp[1], sizeof(INPUT));
+}
+
+// Эмуляция боковой кнопки мыши (Mouse4)
+void SendMouse4() {
+    INPUT inp[2] = {0};
+    inp[0].type = INPUT_MOUSE;
+    inp[0].mi.dwFlags = MOUSEEVENTF_XDOWN;
+    inp[0].mi.mouseData = XBUTTON1;
+
+    inp[1].type = INPUT_MOUSE;
+    inp[1].mi.dwFlags = MOUSEEVENTF_XUP;
+    inp[1].mi.mouseData = XBUTTON1;
+
+    SendInput(1, &inp[0], sizeof(INPUT));
+    Sleep(g_press_delay);
+    SendInput(1, &inp[1], sizeof(INPUT));
+}
+
+// Основной цикл сканирования
+void RotationThread() {
+    LogAction("ПОТОК РОТАЦИИ ЗАПУЩЕН. Подключение к окну...");
+    
+    HDC hdc = GetDC(g_wowHwnd);
+    if (!hdc) {
+        LogAction("ОШИБКА: Не удалось получить контекст окна (HDC)!");
+        g_running.store(false);
+        return;
     }
-    return TRUE;
-}
 
-void PressKey(BYTE vk) {
-    HWND wow = g_hwnd.load();
-    if (!wow || !IsWindow(wow)) return;
+    int last_action = 0;
 
-    // Если это боковые кнопки мыши, используем специфические оконные сообщения
-    if (vk == VK_XBUTTON1 || vk == VK_XBUTTON2) {
-        WORD btn = (vk == VK_XBUTTON1) ? XBUTTON1 : XBUTTON2;
-        WPARAM wParam = MAKEWPARAM(0, btn);
-        // Отправляем сигнал о нажатии и отпускании доп. кнопки мыши
-        PostMessage(wow, WM_XBUTTONDOWN, wParam, 0);
-        std::this_thread::sleep_for(std::chrono::milliseconds(30));
-        PostMessage(wow, WM_XBUTTONUP, wParam, 0);
-    } 
-    // Для всех остальных кнопок используем стандартное нажатие клавиши
-    else {
-        PostMessage(wow, WM_KEYDOWN, vk, 0);
-        std::this_thread::sleep_for(std::chrono::milliseconds(30));
-        PostMessage(wow, WM_KEYUP, vk, 0);
-    }
-}
-
-// Функция для проверки цвета с учетом искажений рендера WoW
-bool IsColorMatch(COLORREF c1, COLORREF c2, int tolerance = 45) {
-    int r = std::abs((int)GetRValue(c1) - (int)GetRValue(c2));
-    int g = std::abs((int)GetGValue(c1) - (int)GetGValue(c2));
-    int b = std::abs((int)GetBValue(c1) - (int)GetBValue(c2));
-    return (r <= tolerance && g <= tolerance && b <= tolerance);
-}
-
-void RotationLoop() {
     while (g_running.load()) {
-        HWND wow = g_hwnd.load();
-        if (!wow || !IsWindow(wow) || GetForegroundWindow() != wow) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
-            continue;
-        }
+        // Читаем пиксель 0,0
+        COLORREF color = GetPixel(hdc, 0, 0);
+        int r = GetRValue(color);
+        int g = GetGValue(color);
+        int b = GetBValue(color);
 
-        // БЕРЕМ КОНТЕКСТ ИМЕННО ОКНА WOW, А НЕ ВСЕГО ЭКРАНА
-        HDC hdc = GetDC(wow); 
-        if (hdc) {
-            // Читаем самый крайний пиксель клиентской части окна (0,0)
-            COLORREF color = GetPixel(hdc, 0, 0);
-            ReleaseDC(wow, hdc);
+        // Расшифровка цвета в кнопку (пороги > 200 защищают от искажений гаммы)
+        int current_action = 0; // 0 = NONE
+        
+        if (r > 200 && g < 50 && b < 50) current_action = 1;         // SS (1)
+        else if (r < 50 && g > 200 && b < 50) current_action = 2;    // SND (2)
+        else if (r < 50 && g < 50 && b > 200) current_action = 3;    // EVIS (Q - 0x51)
+        else if (r > 200 && g > 200 && b < 50) current_action = 4;   // KS (4)
+        else if (r < 50 && g > 200 && b > 200) current_action = 5;   // AR (Mouse4)
+        else if (r > 200 && g < 50 && b > 200) current_action = 6;   // BF (3)
 
-            // Если пиксель практически черный (ничего не нужно жать), пропускаем
-            if (GetRValue(color) < 20 && GetGValue(color) < 20 && GetBValue(color) < 20) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(25));
-                continue;
-            }
+        // Если бот просит нажать что-то новое, жмем
+        if (current_action != 0 && current_action != last_action) {
+            char logMsg[128];
+            sprintf(logMsg, "Детект RGB(%d,%d,%d) -> Действие ID: %d", r, g, b, current_action);
+            LogAction(logMsg);
 
-            // Перебираем все наши бинды и ищем похожий цвет
-            for (const auto& bind : g_binds) {
-                if (IsColorMatch(color, bind.first)) {
-                    
-                    // --- ЛОГИРОВАНИЕ В КОНСОЛЬ ---
-                    printf("[LOG] Цвет экрана: R:%3d G:%3d B:%3d | Жму кнопку: ", 
-                           GetRValue(color), GetGValue(color), GetBValue(color));
-                    
-                    if (bind.second == VK_XBUTTON1) printf("Mouse4\n");
-                    else printf("%c\n", bind.second);
-                    
-                    fflush(stdout); // Принудительно выводим текст
-                    // -----------------------------
-
-                    PressKey(bind.second);
-                    std::this_thread::sleep_for(std::chrono::milliseconds(200));
-                    break; // Нажали кнопку, ждем следующий тик
-                }
+            switch (current_action) {
+                case 1: SendKey(0x31); break; // 1
+                case 2: SendKey(0x32); break; // 2
+                case 3: SendKey(0x51); break; // Q
+                case 4: SendKey(0x34); break; // 4
+                case 5: SendMouse4();  break; // Mouse4
+                case 6: SendKey(0x33); break; // 3
             }
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+        
+        last_action = current_action;
+        Sleep(2); // Квантовая пауза в 2мс чтобы не сжечь процессор
     }
+
+    ReleaseDC(g_wowHwnd, hdc);
+    LogAction("ПОТОК РОТАЦИИ ОСТАНОВЛЕН.");
 }
 
+// Экспорты для loader.cpp
 extern "C" {
-    __declspec(dllexport) BOOL FindWoWWindow() {
-        HWND foundHwnd = nullptr;
-        foundHwnd = FindWindowA("GxWindowClass", nullptr);
-        
-        if (!foundHwnd) {
-            EnumWindows(EnumWindowsProc, (LPARAM)&foundHwnd);
+    __declspec(dllexport) BOOL __stdcall FindWoW() {
+        g_wowHwnd = FindWindowA(NULL, "World of Warcraft");
+        if (g_wowHwnd) {
+            g_log.open("RogueBot_Log.txt", std::ios::app);
+            LogAction("=== WOW НАЙДЕН. БОТ ИНИЦИАЛИЗИРОВАН ===");
+            return TRUE;
         }
-        
-        if (!foundHwnd) {
-            HWND active = GetForegroundWindow();
-            char title[256] = {0};
-            GetWindowTextA(active, title, sizeof(title));
-            std::string t = toLower(title);
-            if (t.find("loader") == std::string::npos && t.find("cmd") == std::string::npos) {
-                foundHwnd = active;
-            }
-        }
-        
-        g_hwnd.store(foundHwnd);
-        return (foundHwnd != nullptr);
+        return FALSE;
     }
 
-    __declspec(dllexport) void BindColor(int r, int g, int b, BYTE vk) {
-        g_binds[RGB(r, g, b)] = vk;
-    }
-
-    __declspec(dllexport) BOOL StartRotation() {
+    __declspec(dllexport) BOOL __stdcall StartRotation() {
         if (g_running.load()) return FALSE;
         g_running.store(true);
-        g_thread = std::thread(RotationLoop);
+        g_thread = std::thread(RotationThread);
         return TRUE;
     }
 
-    __declspec(dllexport) void StopRotation() {
+    __declspec(dllexport) void __stdcall StopRotation() {
         g_running.store(false);
         if (g_thread.joinable()) g_thread.join();
+        if (g_log.is_open()) g_log.close();
     }
 
-    __declspec(dllexport) BOOL IsRunning() { return g_running.load(); }
+    __declspec(dllexport) BOOL __stdcall IsRunning() {
+        return g_running.load() ? TRUE : FALSE;
+    }
 }
-
-BOOL WINAPI DllMain(HMODULE h, DWORD r, LPVOID l) { return TRUE; }
