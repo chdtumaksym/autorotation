@@ -1,6 +1,6 @@
 // ============================================================
-// roguerot.cpp — Настоящий пиксель-ридер (Zero Delay Edition)
-// Читает цвета от ComRogue.lua и мгновенно жмет кнопки
+// roguerot.cpp — Настоящий пиксель-ридер (Config Edition)
+// Читает цвета от Lua и жмет кнопки, указанные в config.ini
 // ============================================================
 
 #define _CRT_SECURE_NO_WARNINGS
@@ -13,9 +13,9 @@
 #include <atomic>
 #include <string>
 
-// Железобетонные предохранители для компилятора
 #ifndef XBUTTON1
 #define XBUTTON1 0x0001
+#define XBUTTON2 0x0002
 #endif
 #ifndef MOUSEEVENTF_XDOWN
 #define MOUSEEVENTF_XDOWN 0x0080
@@ -26,9 +26,11 @@ std::atomic<bool> g_running(false);
 HWND g_wowHwnd = NULL;
 std::thread g_thread;
 std::ofstream g_log;
-int g_press_delay = 10; // 10 мс удержание кнопки
+int g_press_delay = 10;
 
-// Функция для высокоточной записи в лог
+// Переменные для биндов
+int k_color1, k_color2, k_color3, k_color4, k_color5, k_color6;
+
 void LogAction(const std::string& action) {
     if (!g_log.is_open()) return;
     auto now = std::chrono::system_clock::now();
@@ -43,41 +45,57 @@ void LogAction(const std::string& action) {
     g_log.flush();
 }
 
-// Эмуляция нажатия клавиатуры
+// Универсальная функция: жмет и клавиатуру, и боковые кнопки мыши
 void SendKey(WORD vk) {
     INPUT inp[2] = {0};
-    inp[0].type = INPUT_KEYBOARD;
-    inp[0].ki.wVk = vk;
     
-    inp[1].type = INPUT_KEYBOARD;
-    inp[1].ki.wVk = vk;
-    inp[1].ki.dwFlags = KEYEVENTF_KEYUP;
+    if (vk == 0x05 || vk == 0x06) { // VK_XBUTTON1 (Mouse4) или VK_XBUTTON2 (Mouse5)
+        inp[0].type = INPUT_MOUSE;
+        inp[0].mi.dwFlags = MOUSEEVENTF_XDOWN;
+        inp[0].mi.mouseData = (vk == 0x05) ? XBUTTON1 : XBUTTON2;
+
+        inp[1].type = INPUT_MOUSE;
+        inp[1].mi.dwFlags = MOUSEEVENTF_XUP;
+        inp[1].mi.mouseData = (vk == 0x05) ? XBUTTON1 : XBUTTON2;
+    } else {
+        inp[0].type = INPUT_KEYBOARD;
+        inp[0].ki.wVk = vk;
+        
+        inp[1].type = INPUT_KEYBOARD;
+        inp[1].ki.wVk = vk;
+        inp[1].ki.dwFlags = KEYEVENTF_KEYUP;
+    }
 
     SendInput(1, &inp[0], sizeof(INPUT));
     Sleep(g_press_delay); 
     SendInput(1, &inp[1], sizeof(INPUT));
 }
 
-// Эмуляция боковой кнопки мыши (Mouse4)
-void SendMouse4() {
-    INPUT inp[2] = {0};
-    inp[0].type = INPUT_MOUSE;
-    inp[0].mi.dwFlags = MOUSEEVENTF_XDOWN;
-    inp[0].mi.mouseData = XBUTTON1;
+void LoadConfig() {
+    char path[MAX_PATH];
+    GetModuleFileNameA(NULL, path, MAX_PATH);
+    std::string conf = std::string(path);
+    conf = conf.substr(0, conf.find_last_of("\\/")) + "\\config.ini";
 
-    inp[1].type = INPUT_MOUSE;
-    inp[1].mi.dwFlags = MOUSEEVENTF_XUP;
-    inp[1].mi.mouseData = XBUTTON1;
+    char profile[32];
+    GetPrivateProfileStringA("Settings", "ActiveProfile", "Rogue", profile, sizeof(profile), conf.c_str());
 
-    SendInput(1, &inp[0], sizeof(INPUT));
-    Sleep(g_press_delay);
-    SendInput(1, &inp[1], sizeof(INPUT));
+    k_color1 = GetPrivateProfileIntA(profile, "Color1", 49, conf.c_str()); 
+    k_color2 = GetPrivateProfileIntA(profile, "Color2", 50, conf.c_str()); 
+    k_color3 = GetPrivateProfileIntA(profile, "Color3", 81, conf.c_str()); 
+    k_color4 = GetPrivateProfileIntA(profile, "Color4", 52, conf.c_str()); 
+    k_color5 = GetPrivateProfileIntA(profile, "Color5", 5, conf.c_str());  
+    k_color6 = GetPrivateProfileIntA(profile, "Color6", 51, conf.c_str()); 
+    g_press_delay = GetPrivateProfileIntA("Settings", "Delay", 10, conf.c_str());
+    
+    char logMsg[256];
+    sprintf(logMsg, "Конфиг загружен. Профиль: %s. C1=%d, C2=%d, C3=%d, C4=%d, C5=%d, C6=%d", 
+            profile, k_color1, k_color2, k_color3, k_color4, k_color5, k_color6);
+    LogAction(logMsg);
 }
 
-// Основной цикл сканирования
 void RotationThread() {
     LogAction("ПОТОК РОТАЦИИ ЗАПУЩЕН.");
-    
     HDC hdc = GetDC(g_wowHwnd);
     if (!hdc) {
         LogAction("ОШИБКА: Не удалось получить HDC!");
@@ -95,12 +113,12 @@ void RotationThread() {
 
         int current_action = 0; 
         
-        if (r > 200 && g < 50 && b < 50) current_action = 1;         // SS (1)
-        else if (r < 50 && g > 200 && b < 50) current_action = 2;    // SND (2)
-        else if (r < 50 && g < 50 && b > 200) current_action = 3;    // EVIS (Q - 0x51)
-        else if (r > 200 && g > 200 && b < 50) current_action = 4;   // KS (4)
-        else if (r < 50 && g > 200 && b > 200) current_action = 5;   // AR (Mouse4)
-        else if (r > 200 && g < 50 && b > 200) current_action = 6;   // BF (3)
+        if (r > 200 && g < 50 && b < 50) current_action = 1;         // Цвет 1 (Красный)
+        else if (r < 50 && g > 200 && b < 50) current_action = 2;    // Цвет 2 (Зеленый)
+        else if (r < 50 && g < 50 && b > 200) current_action = 3;    // Цвет 3 (Синий)
+        else if (r > 200 && g > 200 && b < 50) current_action = 4;   // Цвет 4 (Желтый)
+        else if (r < 50 && g > 200 && b > 200) current_action = 5;   // Цвет 5 (Голубой)
+        else if (r > 200 && g < 50 && b > 200) current_action = 6;   // Цвет 6 (Фиолетовый)
 
         if (current_action != 0 && current_action != last_action) {
             char logMsg[128];
@@ -108,12 +126,12 @@ void RotationThread() {
             LogAction(logMsg);
 
             switch (current_action) {
-                case 1: SendKey(0x31); break; // 1
-                case 2: SendKey(0x32); break; // 2
-                case 3: SendKey(0x51); break; // Q
-                case 4: SendKey(0x34); break; // 4
-                case 5: SendMouse4();  break; // Mouse4
-                case 6: SendKey(0x33); break; // 3
+                case 1: SendKey(k_color1); break;
+                case 2: SendKey(k_color2); break;
+                case 3: SendKey(k_color3); break;
+                case 4: SendKey(k_color4); break;
+                case 5: SendKey(k_color5); break;
+                case 6: SendKey(k_color6); break;
             }
         }
         
@@ -125,13 +143,13 @@ void RotationThread() {
     LogAction("ПОТОК РОТАЦИИ ОСТАНОВЛЕН.");
 }
 
-// Экспорты
 extern "C" {
     __declspec(dllexport) BOOL FindWoW() {
         g_wowHwnd = FindWindowA(NULL, "World of Warcraft");
         if (g_wowHwnd) {
             g_log.open("RogueBot_Log.txt", std::ios::app);
             LogAction("=== WOW НАЙДЕН. БОТ ИНИЦИАЛИЗИРОВАН ===");
+            LoadConfig();
             return TRUE;
         }
         return FALSE;
@@ -155,7 +173,6 @@ extern "C" {
     }
 }
 
-// Заглушка для линковщика
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
     return TRUE;
 }
